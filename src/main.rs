@@ -4,6 +4,7 @@ mod components;
 mod db;
 mod middleware;
 mod pages;
+mod server;
 mod session;
 
 use std::{
@@ -64,6 +65,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .route("/auth/login", post(auth::login))
         .route("/auth/session", get(auth::validate_session))
         .route("/auth/logout", post(auth::logout))
+        .nest("/server/posts", server::posts::router())
         .nest("/admin", admin_router)
         .with_state(state);
 
