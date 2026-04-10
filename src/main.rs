@@ -3,11 +3,13 @@ mod auth;
 mod components;
 mod db;
 mod middleware;
+mod markdown;
 mod pages;
 mod server;
 mod session;
 
 use std::{
+    collections::BTreeSet,
     collections::HashMap,
     env,
     error::Error,
@@ -65,6 +67,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let router = Router::new()
         .route("/", get(index))
+        .route("/posts/{slug}", get(post_detail))
         .route("/login", get(login_page))
         .route("/healthz", get(healthz))
         .route("/auth/login", post(auth::login))
@@ -323,6 +326,75 @@ async fn admin_posts_index(
 
     Ok(Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Manage Posts | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
+    )))
+}
+
+async fn post_detail(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, StatusCode> {
+    #[derive(Debug, FromRow)]
+    struct PostDetailRow {
+        title: String,
+        body: String,
+        created_at: String,
+        tag_name: Option<String>,
+        tag_slug: Option<String>,
+    }
+
+    let rows = sqlx::query_as::<_, PostDetailRow>(
+        r#"
+        SELECT
+            p.title,
+            p.body,
+            p.created_at,
+            t.name as tag_name,
+            t.slug as tag_slug
+        FROM posts p
+        LEFT JOIN post_tags pt ON pt.post_id = p.id
+        LEFT JOIN tags t ON t.id = pt.tag_id
+        WHERE p.slug = ?1 AND p.is_published = 1
+        ORDER BY t.name ASC
+        "#,
+    )
+    .bind(slug)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let first = rows.first().ok_or(StatusCode::NOT_FOUND)?;
+
+    let mut tags = Vec::<pages::post::PostTag>::new();
+    let mut seen = BTreeSet::<String>::new();
+    for row in &rows {
+        if let (Some(name), Some(tag_slug)) = (&row.tag_name, &row.tag_slug) {
+            if seen.insert(tag_slug.clone()) {
+                tags.push(pages::post::PostTag {
+                    name: name.clone(),
+                    slug: tag_slug.clone(),
+                });
+            }
+        }
+    }
+
+    let content_html = markdown::render_markdown(&first.body);
+    let title = first.title.clone();
+    let published_at = first.created_at.clone();
+
+    let app_html = leptos::ssr::render_to_string(move || {
+        view! {
+            <pages::post::PostPage
+                title=title.clone()
+                published_at=published_at.clone()
+                tags=tags.clone()
+                content_html=content_html.clone()
+            />
+        }
+    });
+
+    Ok(Html(format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>",
+        first.title
     )))
 }
 
