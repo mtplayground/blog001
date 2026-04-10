@@ -5,6 +5,7 @@ mod db;
 mod middleware;
 mod markdown;
 mod pages;
+mod router;
 mod server;
 mod session;
 
@@ -58,6 +59,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let admin_router = Router::new()
         .route("/", get(admin_index))
         .route("/posts", get(admin_posts_index))
+        .route("/editor", get(admin_new_post))
         .route("/posts/new", get(admin_new_post))
         .route("/posts/{id}/edit", get(admin_edit_post))
         .layer(axum::middleware::from_fn_with_state(
@@ -66,9 +68,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         ));
 
     let router = Router::new()
-        .route("/", get(index))
+        .route(router::HOME, get(index))
+        .route(router::POST_AXUM, get(post_detail))
         .route("/posts/{slug}", get(post_detail))
-        .route("/login", get(login_page))
+        .route(router::TAG_AXUM, get(tag_listing))
+        .route(router::LOGIN, get(login_page))
         .route("/healthz", get(healthz))
         .route("/auth/login", post(auth::login))
         .route("/auth/session", get(auth::validate_session))
@@ -107,6 +111,20 @@ async fn healthz(State(state): State<Arc<AppState>>) -> Result<&'static str, Sta
 }
 
 async fn index(State(state): State<Arc<AppState>>) -> Result<Html<String>, StatusCode> {
+    render_home_page(state, None).await
+}
+
+async fn tag_listing(
+    State(state): State<Arc<AppState>>,
+    Path(tag): Path<String>,
+) -> Result<Html<String>, StatusCode> {
+    render_home_page(state, Some(tag)).await
+}
+
+async fn render_home_page(
+    state: Arc<AppState>,
+    selected_tag: Option<String>,
+) -> Result<Html<String>, StatusCode> {
     #[derive(Debug, FromRow)]
     struct HomeRow {
         post_id: i64,
@@ -179,9 +197,23 @@ async fn index(State(state): State<Arc<AppState>>) -> Result<Html<String>, Statu
         .collect::<Vec<_>>();
     tags.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let filtered_posts = if let Some(selected) = &selected_tag {
+        posts
+            .into_iter()
+            .filter(|post| post.tag_slugs.iter().any(|slug| slug == selected))
+            .collect::<Vec<_>>()
+    } else {
+        posts
+    };
+
+    let selected_tag_for_view = selected_tag.unwrap_or_else(|| "all".to_string());
     let app_html = leptos::ssr::render_to_string(move || {
         view! {
-            <pages::home::HomePage posts=posts.clone() tags=tags.clone() />
+            <pages::home::HomePageWithSelection
+                posts=filtered_posts.clone()
+                tags=tags.clone()
+                selected_slug=selected_tag_for_view.clone()
+            />
         }
     });
 

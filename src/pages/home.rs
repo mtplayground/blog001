@@ -15,13 +15,27 @@ pub struct HomePostSummary {
 #[component]
 pub fn HomePage(posts: Vec<HomePostSummary>, tags: Vec<TagFilterItem>) -> impl IntoView {
     view! {
+        <HomePageWithSelection posts=posts tags=tags />
+    }
+}
+
+#[component]
+pub fn HomePageWithSelection(
+    posts: Vec<HomePostSummary>,
+    tags: Vec<TagFilterItem>,
+    #[prop(optional)]
+    selected_slug: Option<String>,
+) -> impl IntoView {
+    let selected_slug = selected_slug.unwrap_or_else(|| "all".to_string());
+
+    view! {
         <div class="space-y-6">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">"Latest Posts"</h1>
                 <p class="mt-1 text-sm text-slate-600">"Published posts in reverse chronological order."</p>
             </div>
 
-            <TagFilter tags=tags />
+            <TagFilter tags=tags selected_slug=selected_slug />
 
             {if posts.is_empty() {
                 view! {
