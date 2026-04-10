@@ -72,6 +72,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .route("/auth/session", get(auth::validate_session))
         .route("/auth/logout", post(auth::logout))
         .nest("/server/posts", server::posts::router())
+        .nest("/server/tags", server::tags::router())
         .nest("/admin", admin_router)
         .with_state(state);
 
