@@ -1,4 +1,5 @@
 mod app;
+mod components;
 mod db;
 
 use std::{
@@ -83,6 +84,6 @@ async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
     });
 
     Html(format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>blog001</title></head><body>{app_html}</body></html>"
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
     ))
 }

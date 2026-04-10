@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use crate::components::layout::BaseLayout;
+
 #[component]
 pub fn App(database_configured: bool) -> impl IntoView {
     let status_text = if database_configured {
@@ -9,11 +11,10 @@ pub fn App(database_configured: bool) -> impl IntoView {
     };
 
     view! {
-        <main style="font-family: sans-serif; max-width: 42rem; margin: 2rem auto; line-height: 1.4; padding: 0 1rem;">
-            <h1>"blog001"</h1>
-            <p>"Leptos SSR with Axum is initialized."</p>
-            <p>{format!("DATABASE_URL is {status_text}.")}</p>
-            <p>"Health check endpoint: /healthz"</p>
-        </main>
+        <BaseLayout title="Leptos SSR is ready">
+            <p class="text-base text-slate-700">"Tailwind base layout has been configured for this project."</p>
+            <p class="text-base text-slate-700">{format!("DATABASE_URL is {status_text}.")}</p>
+            <p class="text-sm text-slate-500">"Health check endpoint: /healthz"</p>
+        </BaseLayout>
     }
 }
