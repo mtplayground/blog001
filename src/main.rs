@@ -8,6 +8,7 @@ mod server;
 mod session;
 
 use std::{
+    collections::HashMap,
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -25,8 +26,6 @@ use axum::{
 };
 use leptos::view;
 use sqlx::{FromRow, SqlitePool};
-
-use crate::app::App;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -104,18 +103,88 @@ async fn healthz(State(state): State<Arc<AppState>>) -> Result<&'static str, Sta
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
 }
 
-async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
-    let database_configured = state.database_url.is_some();
+async fn index(State(state): State<Arc<AppState>>) -> Result<Html<String>, StatusCode> {
+    #[derive(Debug, FromRow)]
+    struct HomeRow {
+        post_id: i64,
+        title: String,
+        slug: String,
+        body: String,
+        created_at: String,
+        tag_name: Option<String>,
+        tag_slug: Option<String>,
+    }
+
+    let rows = sqlx::query_as::<_, HomeRow>(
+        r#"
+        SELECT
+            p.id as post_id,
+            p.title,
+            p.slug,
+            p.body,
+            p.created_at,
+            t.name as tag_name,
+            t.slug as tag_slug
+        FROM posts p
+        LEFT JOIN post_tags pt ON pt.post_id = p.id
+        LEFT JOIN tags t ON t.id = pt.tag_id
+        WHERE p.is_published = 1
+        ORDER BY p.created_at DESC, p.id DESC, t.name ASC
+        "#,
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut posts = Vec::<pages::home::HomePostSummary>::new();
+    let mut post_index = HashMap::<i64, usize>::new();
+    let mut tag_counts = HashMap::<(String, String), usize>::new();
+
+    for row in rows {
+        let idx = if let Some(existing_idx) = post_index.get(&row.post_id) {
+            *existing_idx
+        } else {
+            let next_idx = posts.len();
+            posts.push(pages::home::HomePostSummary {
+                title: row.title.clone(),
+                slug: row.slug.clone(),
+                excerpt: excerpt(&row.body, 180),
+                published_at: row.created_at.clone(),
+                tag_names: Vec::new(),
+                tag_slugs: Vec::new(),
+            });
+            post_index.insert(row.post_id, next_idx);
+            next_idx
+        };
+
+        if let (Some(tag_name), Some(tag_slug)) = (row.tag_name, row.tag_slug) {
+            if !posts[idx].tag_slugs.contains(&tag_slug) {
+                posts[idx].tag_names.push(tag_name.clone());
+                posts[idx].tag_slugs.push(tag_slug.clone());
+                *tag_counts.entry((tag_name, tag_slug)).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let mut tags = tag_counts
+        .into_iter()
+        .map(|((name, slug), count)| components::tag_filter::TagFilterItem {
+            name,
+            slug,
+            count,
+        })
+        .collect::<Vec<_>>();
+    tags.sort_by(|a, b| a.name.cmp(&b.name));
 
     let app_html = leptos::ssr::render_to_string(move || {
         view! {
-            <App database_configured=database_configured />
+            <pages::home::HomePage posts=posts.clone() tags=tags.clone() />
         }
     });
 
-    Html(format!(
+    Ok(Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
-    ))
+    )))
 }
 
 async fn login_page() -> Html<String> {
@@ -255,4 +324,15 @@ async fn admin_posts_index(
     Ok(Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Manage Posts | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
     )))
+}
+
+fn excerpt(content: &str, max_chars: usize) -> String {
+    let trimmed = content.trim();
+    let mut chars = trimmed.chars();
+    let collected = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{collected}...")
+    } else {
+        collected
+    }
 }
