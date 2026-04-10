@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let bind_addr = read_bind_addr()?;
     let admin_router = Router::new()
         .route("/", get(admin_index))
+        .route("/posts", get(admin_posts_index))
         .route("/posts/new", get(admin_new_post))
         .route("/posts/{id}/edit", get(admin_edit_post))
         .layer(axum::middleware::from_fn_with_state(
@@ -204,4 +205,53 @@ fn render_editor_page(username: String, post_id: Option<i64>) -> Html<String> {
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Post Editor | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
     ))
+}
+
+async fn admin_posts_index(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<middleware::auth::AuthUser>,
+) -> Result<Html<String>, StatusCode> {
+    #[derive(Debug, FromRow)]
+    struct PostListRow {
+        id: i64,
+        title: String,
+        slug: String,
+        is_published: bool,
+        updated_at: String,
+    }
+
+    let rows = sqlx::query_as::<_, PostListRow>(
+        r#"
+        SELECT id, title, slug, is_published, updated_at
+        FROM posts
+        ORDER BY updated_at DESC
+        "#,
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let posts = rows
+        .into_iter()
+        .map(|row| pages::admin::posts::AdminPostListItem {
+            id: row.id,
+            title: row.title,
+            slug: row.slug,
+            is_published: row.is_published,
+            updated_at: row.updated_at,
+        })
+        .collect::<Vec<_>>();
+
+    let username = user.username;
+    let app_html = leptos::ssr::render_to_string(move || {
+        view! {
+            <components::admin_layout::AdminLayout username=username.clone()>
+                <pages::admin::posts::AdminPostsPage posts=posts.clone() />
+            </components::admin_layout::AdminLayout>
+        }
+    });
+
+    Ok(Html(format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Manage Posts | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
+    )))
 }
