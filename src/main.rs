@@ -1,4 +1,5 @@
 mod app;
+mod db;
 
 use std::{
     env,
@@ -8,14 +9,16 @@ use std::{
     sync::Arc,
 };
 
-use axum::{extract::State, response::Html, routing::get, Router};
+use axum::{extract::State, http::StatusCode, response::Html, routing::get, Router};
 use leptos::prelude::*;
+use sqlx::SqlitePool;
 
 use crate::app::App;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct AppState {
     database_url: Option<String>,
+    db_pool: SqlitePool,
 }
 
 #[tokio::main]
@@ -25,12 +28,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "blog001=info,axum=info".into()),
+                .unwrap_or_else(|_| "blog001=info,axum=info,sqlx=warn".into()),
         )
         .init();
 
+    let db_pool = db::connect_and_migrate_from_env().await?;
+
     let state = Arc::new(AppState {
         database_url: env::var("DATABASE_URL").ok(),
+        db_pool,
     });
     let bind_addr = read_bind_addr()?;
 
@@ -59,8 +65,12 @@ fn read_bind_addr() -> Result<SocketAddr, Box<dyn Error + Send + Sync>> {
     Ok(SocketAddr::from((ip, port)))
 }
 
-async fn healthz() -> &'static str {
-    "ok"
+async fn healthz(State(state): State<Arc<AppState>>) -> Result<&'static str, StatusCode> {
+    sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&state.db_pool)
+        .await
+        .map(|_| "ok")
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
 }
 
 async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
