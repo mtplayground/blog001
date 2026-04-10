@@ -1,6 +1,8 @@
 mod app;
+mod auth;
 mod components;
 mod db;
+mod session;
 
 use std::{
     env,
@@ -8,18 +10,26 @@ use std::{
     net::{IpAddr, SocketAddr},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
-use axum::{extract::State, http::StatusCode, response::Html, routing::get, Router};
-use leptos::prelude::*;
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::Html,
+    routing::{get, post},
+    Router,
+};
+use leptos::view;
 use sqlx::SqlitePool;
 
 use crate::app::App;
 
 #[derive(Clone)]
-struct AppState {
-    database_url: Option<String>,
-    db_pool: SqlitePool,
+pub(crate) struct AppState {
+    pub(crate) database_url: Option<String>,
+    pub(crate) db_pool: SqlitePool,
+    pub(crate) session_store: session::SessionStore,
 }
 
 #[tokio::main]
@@ -38,12 +48,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let state = Arc::new(AppState {
         database_url: env::var("DATABASE_URL").ok(),
         db_pool,
+        session_store: session::SessionStore::new(Duration::from_secs(60 * 60 * 24)),
     });
     let bind_addr = read_bind_addr()?;
 
     let router = Router::new()
         .route("/", get(index))
         .route("/healthz", get(healthz))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/session", get(auth::validate_session))
+        .route("/auth/logout", post(auth::logout))
         .with_state(state);
 
     tracing::info!(%bind_addr, "starting blog001 server");
