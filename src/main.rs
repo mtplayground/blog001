@@ -17,7 +17,7 @@ use std::{
 };
 
 use axum::{
-    extract::{Extension, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::Html,
     routing::{get, post},
@@ -54,9 +54,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         session_store: session::SessionStore::new(Duration::from_secs(60 * 60 * 24)),
     });
     let bind_addr = read_bind_addr()?;
-    let admin_router = Router::new().route("/", get(admin_index)).layer(
-        axum::middleware::from_fn_with_state(state.clone(), middleware::auth::require_admin_auth),
-    );
+    let admin_router = Router::new()
+        .route("/", get(admin_index))
+        .route("/posts/new", get(admin_new_post))
+        .route("/posts/{id}/edit", get(admin_edit_post))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth::require_admin_auth,
+        ));
 
     let router = Router::new()
         .route("/", get(index))
@@ -174,4 +179,29 @@ async fn admin_index(
     Ok(Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Admin | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
     )))
+}
+
+async fn admin_new_post(Extension(user): Extension<middleware::auth::AuthUser>) -> Html<String> {
+    render_editor_page(user.username, None)
+}
+
+async fn admin_edit_post(
+    Path(id): Path<i64>,
+    Extension(user): Extension<middleware::auth::AuthUser>,
+) -> Html<String> {
+    render_editor_page(user.username, Some(id))
+}
+
+fn render_editor_page(username: String, post_id: Option<i64>) -> Html<String> {
+    let app_html = leptos::ssr::render_to_string(move || {
+        view! {
+            <components::admin_layout::AdminLayout username=username.clone()>
+                <pages::admin::editor::PostEditorPage post_id=post_id />
+            </components::admin_layout::AdminLayout>
+        }
+    });
+
+    Html(format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Post Editor | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
+    ))
 }
