@@ -1,0 +1,94 @@
+# Blog001 Architecture Plan (Issues #1-#20)
+
+## 1) Module Structure and File Organization
+
+- `Cargo.toml`
+  - Workspace-level dependencies and feature flags (Leptos SSR/hydrate, Axum, sqlx, tracing, testing).
+- `src/main.rs`
+  - Entrypoint: tracing init, config load, DB pool init, Axum+Leptos app bootstrap.
+- `src/app.rs`
+  - Root Leptos app shell, global providers, top-level route mounting.
+- `src/config.rs`
+  - Runtime configuration (`DATABASE_URL`, `LEPTOS_SITE_ROOT`, session secrets, env mode).
+- `src/error.rs`
+  - App error enum + HTTP/UI mapping helpers used by server functions and handlers.
+- `src/auth/`
+  - `mod.rs`, `session.rs`, `middleware.rs`, `server_fns.rs`.
+  - Login/logout flows, cookie/session handling, admin gate middleware.
+- `src/posts/`
+  - `mod.rs`, `model.rs`, `repo.rs`, `server_fns.rs`, `markdown.rs`.
+  - Post entities, CRUD data access, validation, markdown rendering utilities.
+- `src/tags/`
+  - `mod.rs`, `model.rs`, `repo.rs`, `server_fns.rs`.
+  - Tag entities, CRUD, association queries for filters.
+- `src/web/`
+  - `mod.rs`, `routes.rs`, `layouts.rs`, `components/`, `pages/`.
+  - UI pages/components: login, admin dashboard, post editor/list, public list/detail, tag filter, 404.
+- `src/db/`
+  - `mod.rs`, `pool.rs`.
+  - sqlx pool creation and migration trigger hooks.
+- `migrations/`
+  - SQL migrations for users/sessions/posts/tags/post_tags and indexes.
+- `style/` (or framework default for Tailwind input)
+  - Tailwind source styles and base layout tokens.
+- `tests/integration/`
+  - `auth_posts.rs`, `public_tags.rs`.
+  - End-to-end-ish integration tests against app router and test DB.
+- `.github/workflows/ci.yml`
+  - Build, lint, test, migration checks.
+
+## 2) Shared Types and Contracts
+
+- `AppState`
+  - Shared Axum state injected into Leptos server functions: db pool, config, auth/session service.
+- `UserSession`
+  - Canonical authenticated user context (user_id, role, expiry).
+- `Post`, `PostInput`, `PostSummary`
+  - Domain model + create/update payload + public list projection.
+- `Tag`, `TagInput`
+  - Domain model + create/update payload.
+- `Paginated<T>`
+  - Reusable list response for public/admin listing.
+- `AppError`
+  - Validation/auth/not-found/db/internal variants, mapped to HTTP and user-facing feedback.
+
+## 3) Dependency Graph Across Issues
+
+- Foundations
+  - #1 (Leptos+Axum) -> base required for all app features.
+  - #2 (SQLite+sqlx+migrations) depends on #1.
+  - #3 (Tailwind+base layout) depends on #1.
+  - #4 (CI) depends on #1/#2 at minimum.
+- Auth/Admin base
+  - #5 (login + sessions) depends on #2.
+  - #6 (login UI) depends on #3 and #5.
+  - #7 (auth middleware) depends on #5.
+- Post management
+  - #8 (post CRUD server fns) depends on #2 and #7.
+  - #9 (admin dashboard) depends on #7 and #8.
+  - #10 (post editor UI) depends on #8/#9.
+  - #11 (admin post list+delete) depends on #8/#9.
+- Tags + public content
+  - #12 (tag CRUD server fns) depends on #2 and #7.
+  - #13 (tag filter component) depends on #12 and #14.
+  - #14 (public post list page) depends on #8.
+  - #15 (single post markdown page) depends on #8 and markdown utility setup.
+  - #16 (full routing) depends on #6/#9/#10/#11/#14/#15.
+- Hardening
+  - #17 (auth + post CRUD integration tests) depends on #5/#7/#8/#16.
+  - #18 (public pages + tags integration tests) depends on #12/#13/#14/#15/#16.
+  - #19 (error handling + 404 + polish) depends on #16 and benefits from #17/#18.
+  - #20 (deployment prep) depends on stable app + CI + tests (#4/#17/#18/#19).
+
+## 4) Key Design Decisions
+
+- Keep Axum router as outer HTTP layer and Leptos routes/components as UI layer; place all business logic in domain modules (`auth/posts/tags`) rather than in page components.
+- Use SQLx compile-time checked queries and migrations-first schema evolution.
+- Use server functions for UI-triggered operations, but route all DB access through repository modules to prevent duplicated query logic.
+- Use cookie-backed session IDs with server-side session validation in DB (revocable sessions), not purely client-side tokens.
+- Treat admin authorization as middleware + explicit per-operation authorization checks for defense in depth.
+- Store markdown raw content in DB and render to HTML on read with sanitization before output.
+- Build routing in one pass after core pages exist to minimize churn in route IDs/paths.
+- Integration tests should run against isolated SQLite DB instances and apply migrations at test startup.
+- CI should include: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and migration consistency checks.
+- Deployment target should assume SSR runtime env vars and persistent SQLite volume (or migration path to Postgres later without changing domain APIs).
