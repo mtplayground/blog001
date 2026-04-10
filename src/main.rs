@@ -24,7 +24,7 @@ use axum::{
     Router,
 };
 use leptos::view;
-use sqlx::SqlitePool;
+use sqlx::{FromRow, SqlitePool};
 
 use crate::app::App;
 
@@ -124,19 +124,54 @@ async fn login_page() -> Html<String> {
 }
 
 async fn admin_index(
+    State(state): State<Arc<AppState>>,
     Extension(user): Extension<middleware::auth::AuthUser>,
-) -> Html<String> {
+) -> Result<Html<String>, StatusCode> {
+    #[derive(Debug, FromRow)]
+    struct DashboardRow {
+        title: String,
+        slug: String,
+        is_published: bool,
+        updated_at: String,
+    }
+
+    let post_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM posts")
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let recent_posts = sqlx::query_as::<_, DashboardRow>(
+        r#"
+        SELECT title, slug, is_published, updated_at
+        FROM posts
+        ORDER BY updated_at DESC
+        LIMIT 5
+        "#,
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let summaries = recent_posts
+        .into_iter()
+        .map(|row| pages::admin::dashboard::RecentPostSummary {
+            title: row.title,
+            slug: row.slug,
+            is_published: row.is_published,
+            updated_at: row.updated_at,
+        })
+        .collect::<Vec<_>>();
+
     let username = user.username;
     let app_html = leptos::ssr::render_to_string(move || {
         view! {
             <components::admin_layout::AdminLayout username=username.clone()>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">"Admin Dashboard"</h1>
-                <p class="text-base text-slate-700">"You are authenticated and can access protected admin routes."</p>
+                <pages::admin::dashboard::AdminDashboard post_count=post_count recent_posts=summaries.clone() />
             </components::admin_layout::AdminLayout>
         }
     });
 
-    Html(format!(
+    Ok(Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Admin | blog001</title><link rel=\"stylesheet\" href=\"/style/main.css\"></head><body>{app_html}</body></html>"
-    ))
+    )))
 }
