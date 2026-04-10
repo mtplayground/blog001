@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::{component, view, Children, IntoView};
 
 #[component]
 pub fn BaseLayout(title: &'static str, children: Children) -> impl IntoView {

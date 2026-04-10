@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::{component, view, IntoView};
 
 use crate::components::layout::BaseLayout;
 
