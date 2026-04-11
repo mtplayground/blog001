@@ -29,6 +29,7 @@ use axum::{
 };
 use leptos::view;
 use sqlx::{FromRow, SqlitePool};
+use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -79,6 +80,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .route("/auth/logout", post(auth::logout))
         .nest("/server/posts", server::posts::router())
         .nest("/server/tags", server::tags::router())
+        .nest_service("/style", ServeDir::new("style"))
         .nest("/admin", admin_router)
         .with_state(state);
 
