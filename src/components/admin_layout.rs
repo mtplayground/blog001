@@ -52,7 +52,7 @@ pub fn AdminLayout(username: String, children: Children) -> impl IntoView {
                     "Protected admin area"
                 </div>
             </footer>
-            <script>{script}</script>
+            <script inner_html=script></script>
         </div>
     }
 }

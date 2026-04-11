@@ -95,7 +95,7 @@ pub fn LoginPage() -> impl IntoView {
                     </button>
                 </form>
             </div>
-            <script>{script}</script>
+            <script inner_html=script></script>
         </BaseLayout>
     }
 }

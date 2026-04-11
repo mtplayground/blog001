@@ -248,7 +248,7 @@ pub fn PostEditorPage(post_id: Option<i64>) -> impl IntoView {
 
                 <p id="post-editor-status" class="text-sm font-medium text-slate-600"></p>
             </form>
-            <script>{script}</script>
+            <script inner_html=script></script>
         </div>
     }
 }

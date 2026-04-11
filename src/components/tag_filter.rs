@@ -90,7 +90,7 @@ pub fn TagFilter(
             </div>
 
             <p class="text-xs text-slate-500">"Select a tag to filter visible posts."</p>
-            <script>{script}</script>
+            <script inner_html=script></script>
         </aside>
     }
 }

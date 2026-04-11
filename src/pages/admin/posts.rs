@@ -147,7 +147,7 @@ pub fn AdminPostsPage(posts: Vec<AdminPostListItem>) -> impl IntoView {
             }}
 
             <p id="admin-posts-status" class="text-sm font-medium text-slate-600"></p>
-            <script>{script}</script>
+            <script inner_html=script></script>
         </div>
     }
 }
